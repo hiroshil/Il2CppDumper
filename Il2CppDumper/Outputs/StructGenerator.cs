@@ -82,9 +82,9 @@ namespace Il2CppDumper
                     var typeDef = metadata.typeDefs[typeIndex];
                     AddStruct(typeDef);
                     var typeName = executor.GetTypeDefName(typeDef, true, true);
-                    var methodEnd = typeDef.methodStart + typeDef.method_count;
-                    for (var i = typeDef.methodStart; i < methodEnd; ++i)
+                    for (var methodIndexInType = 0; methodIndexInType < typeDef.method_count; methodIndexInType++)
                     {
+                        var i = metadata.GetMethodIndexFromTypeDefinition(typeIndex, methodIndexInType);
                         var methodDef = metadata.methodDefs[i];
                         var methodName = metadata.GetStringFromIndex(methodDef.nameIndex);
                         var methodPointer = il2Cpp.GetMethodPointer(imageName, methodDef);
@@ -279,7 +279,7 @@ namespace Il2CppDumper
                         if (metadataValue < uint.MaxValue)
                         {
                             var encodedToken = (uint)metadataValue;
-                            var usage = Metadata.GetEncodedIndexType(encodedToken);
+                            var usage = metadata.GetEncodedIndexTypeForVersion(encodedToken);
                             if (usage > 0 && usage <= 6)
                             {
                                 var decodedIndex = metadata.GetDecodedMethodIndex(encodedToken);

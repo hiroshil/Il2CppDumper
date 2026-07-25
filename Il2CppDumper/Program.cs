@@ -179,7 +179,7 @@ namespace Il2CppDumper
                     break;
             }
             var version = config.ForceIl2CppVersion ? config.ForceVersion : metadata.Version;
-            il2Cpp.SetProperties(version, metadata.metadataUsagesCount);
+            il2Cpp.SetProperties(version, metadata.metadataUsagesCount, metadata);
             Console.WriteLine($"Il2Cpp Version: {il2Cpp.Version}");
             if (config.ForceDump || il2Cpp.CheckDump())
             {
@@ -214,7 +214,7 @@ namespace Il2CppDumper
                     {
                         Console.WriteLine("Use custom PE loader");
                         il2Cpp = PELoader.Load(il2cppPath);
-                        il2Cpp.SetProperties(version, metadata.metadataUsagesCount);
+                        il2Cpp.SetProperties(version, metadata.metadataUsagesCount, metadata);
                         flag = il2Cpp.PlusSearch(metadata.methodDefs.Count(x => x.methodIndex >= 0), metadata.typeDefs.Length, metadata.imageDefs.Length);
                     }
                 }
