@@ -1,0 +1,151 @@
+name: Build Windows x64 self-contained
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-x64-runtime:
+    name: Windows x64 self-contained
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      PROJECT_PATH: Il2CppDumper/Il2CppDumper.csproj
+      PROJECT_DIR: Il2CppDumper
+      CONFIGURATION: Release
+      FRAMEWORK: net8.0
+      RUNTIME_ID: win-x64
+      PUBLISH_DIR: publish/Il2CppDumper-win-x64-self-contained
+      PACKAGE_DIR: package/Il2CppDumper-win-x64-self-contained
+      ARTIFACT_NAME: Il2CppDumper-win-x64-self-contained
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Show .NET info
+        run: dotnet --info
+
+      - name: Restore Windows x64 runtime packages
+        run: |
+          dotnet restore $env:PROJECT_PATH `
+            --runtime $env:RUNTIME_ID
+
+      - name: Publish Windows x64 self-contained binary
+        run: |
+          if (Test-Path $env:PUBLISH_DIR) {
+            Remove-Item $env:PUBLISH_DIR -Recurse -Force
+          }
+
+          dotnet publish $env:PROJECT_PATH `
+            --configuration $env:CONFIGURATION `
+            --framework $env:FRAMEWORK `
+            --runtime $env:RUNTIME_ID `
+            --self-contained true `
+            --no-restore `
+            --output $env:PUBLISH_DIR `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:PublishTrimmed=false `
+            -p:DebugType=None `
+            -p:DebugSymbols=false
+
+      - name: Ensure config and helper scripts are packaged
+        run: |
+          $requiredFiles = @(
+            "config.json",
+            "ghidra.py",
+            "ghidra_wasm.py",
+            "ghidra_with_struct.py",
+            "ida.py",
+            "ida_py3.py",
+            "ida_with_struct.py",
+            "ida_with_struct_py3.py",
+            "il2cpp_header_to_ghidra.py"
+          )
+
+          foreach ($file in $requiredFiles) {
+            $source = Join-Path $env:PROJECT_DIR $file
+            $target = Join-Path $env:PUBLISH_DIR $file
+            if (Test-Path $source) {
+              Copy-Item $source $target -Force
+            }
+          }
+
+      - name: Verify self-contained package
+        run: |
+          $exe = Join-Path $env:PUBLISH_DIR "Il2CppDumper.exe"
+          $config = Join-Path $env:PUBLISH_DIR "config.json"
+
+          if (!(Test-Path $exe)) {
+            throw "Il2CppDumper.exe was not produced."
+          }
+          if (!(Test-Path $config)) {
+            throw "config.json is missing from publish output."
+          }
+
+          Write-Host "Published files:"
+          Get-ChildItem $env:PUBLISH_DIR | Sort-Object Name | Format-Table Name, Length
+
+          Write-Host "Running help check:"
+          & $exe --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Il2CppDumper.exe --help failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Prepare artifact folder
+        run: |
+          if (Test-Path $env:PACKAGE_DIR) {
+            Remove-Item $env:PACKAGE_DIR -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $env:PACKAGE_DIR | Out-Null
+          Copy-Item "$env:PUBLISH_DIR\*" $env:PACKAGE_DIR -Recurse -Force
+
+          $readme = Join-Path $env:PACKAGE_DIR "USAGE.txt"
+          $readmeLines = @(
+            "Il2CppDumper Windows x64 self-contained build",
+            "",
+            "This package contains Il2CppDumper.exe built for win-x64 with the .NET runtime included.",
+            "A separate .NET installation should not be required.",
+            "",
+            "Usage:",
+            "  Il2CppDumper.exe <executable-file> <global-metadata.dat> <output-directory>",
+            "",
+            "Notes:",
+            "  - Keep config.json next to Il2CppDumper.exe.",
+            "  - Helper scripts are included next to the executable."
+          )
+          $readmeLines | Set-Content -Path $readme -Encoding UTF8
+
+          Write-Host "Artifact folder contents:"
+          Get-ChildItem $env:PACKAGE_DIR | Sort-Object Name | Format-Table Name, Length
+
+      - name: Upload Windows x64 runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: package/*
+          if-no-files-found: error
+          retention-days: 30
